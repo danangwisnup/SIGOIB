@@ -43,8 +43,16 @@ NOT TESTABLE HERE:
 - Build/run Flutter (`flutter pub get`, analyze, build apk) — butuh Flutter SDK; source sudah static-reviewed.
 - Background GPS riil Android/iOS (foreground service, battery optimization) — butuh perangkat fisik/emulator; ikuti pilot 5–10 perangkat.
 
+### Phase 8 (2026-06): Deployment package — SELESAI
+- `DEPLOYMENT.md` baru: panduan cPanel (File Manager, PHP 8.2 selector, MySQL Wizard, import via phpMyAdmin, AutoSSL/HTTPS, cron retensi), VPS Apache/Nginx, hardening produksi (ganti password default & credential DB, CORS note), checklist SERVER/WEB/MOBILE.
+- `backend/database/seed_users.sql` + `test_data.sql`: seeding tanpa SSH (hash bcrypt terverifikasi runtime) untuk phpMyAdmin.
+- Fix `.htaccess` root: pola RedirectMatch konteks .htaccess (tanpa leading slash) agar blokir `backend/` benar-benar aktif di Apache/cPanel.
+- `.gitignore` (backend/.env dilarang ikut paket).
+- `mobile/README.md`: flutter create/pub get/analyze/build apk --release/build ios --release + penjelasan permission Android & iOS.
+- Terverifikasi: seed SQL di-load ke MariaDB bersih → login admin via API PASS; health check endpoint 405 JSON.
+
 ## Backlog
-- P0: Deploy ke server produksi (Apache/Nginx + PHP-FPM + MySQL), ganti kredensial, HTTPS.
+- P0: Deploy ke cPanel produksi ikut DEPLOYMENT.md (ganti kredensial, HTTPS, ganti password default).
 - P0: Build & uji APK pada 5–10 perangkat (pilot) — termasuk app minimized, screen locked, phone restart.
 - P1: Cron retensi GPS 90 hari (SQL tersedia di README).
 - P2: Import .xlsx native; PDF server-side.

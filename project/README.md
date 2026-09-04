@@ -55,6 +55,8 @@ php database/seed.php          # akun admin/komandan/wadan/danki/danton
 php database/test_data.php     # 8 personel + 1 geofence + 1 device PENDING (idempotent)
 ```
 
+Tanpa SSH (cPanel/phpMyAdmin): import `backend/database/seed_users.sql` dan (opsional) `backend/database/test_data.sql`.
+
 ### 3b. Smoke test otomatis (opsional, butuh server dev berjalan)
 
 ```bash
@@ -85,6 +87,8 @@ php -S 0.0.0.0:8000 router.php
 ```
 
 **Production (Apache)**: arahkan docroot ke folder `project/` (`.htaccess` sudah disiapkan; pastikan `mod_rewrite` aktif dan `AllowOverride All`).
+
+**Production (cPanel / Nginx / HTTPS / checklist lengkap): lihat [DEPLOYMENT.md](DEPLOYMENT.md).**
 
 **Production (Nginx)**:
 

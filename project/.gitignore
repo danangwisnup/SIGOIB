@@ -1,0 +1,4 @@
+# Jangan pernah commit/upload credential produksi
+backend/.env
+*.log
+.DS_Store
