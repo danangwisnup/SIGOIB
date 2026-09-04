@@ -59,10 +59,11 @@ class User
     public static function createToken(int $userId, int $ttlHours): string
     {
         $token = bin2hex(random_bytes(24));
+        $expiresAt = date('Y-m-d H:i:s', time() + $ttlHours * 3600);
         $stmt = Database::pdo()->prepare(
-            'INSERT INTO auth_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? HOUR))'
+            'INSERT INTO auth_tokens (user_id, token, expires_at) VALUES (?, ?, ?)'
         );
-        $stmt->execute([$userId, $token, $ttlHours]);
+        $stmt->execute([$userId, $token, $expiresAt]);
         return $token;
     }
 

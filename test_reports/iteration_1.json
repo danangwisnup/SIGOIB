@@ -1,0 +1,49 @@
+{
+  "summary": "Phase 7 targeted testing of Monitoring IB & Quick Check PHP+MariaDB app. 16/17 backend pytest cases pass; 1 real backend bug found (double-cancel accepted). All 9 sidebar pages navigate without console errors. Critical UI flows verified: login, personnel search/filter/import-preview, device approve+revoke, IB create+detail+cancel, quick-check with duration, geofence modal map picker, reports table+CSV download, settings (pw form, users, audit), logout, wrong-password error. Admin password restored to admin123.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/monitoring/{id}/cancel",
+        "issue": "Double-cancel is silently accepted (returns 200). Requirement per Phase 7 spec: 'cancelled session cannot be cancelled twice'. Root cause: MonitoringController::cancel calls MonitoringSession::cancel which does UPDATE ... WHERE status IN ('SCHEDULED','ACTIVE') so a no-op on already-CANCELLED — but the controller does not check the current status or the affected rowCount before returning success. Fix: in cancel controller, check $session['status'] === 'CANCELLED' and Response::error('Monitoring sudah dibatalkan.', 409), OR check PDO rowCount() after UPDATE.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Riwayat (History) — autocomplete/suggest for NRP search",
+        "issue": "Typing '320002' in [data-testid=history-search] did not surface visible autocomplete suggestions and the 'Tampilkan' button remained hidden — probably requires a specific suggest element the user must click before the load button appears. Should be reviewed for discoverability (may just be styling of dropdown), but no JS errors were thrown.",
+        "affected_selectors": ["[data-testid=history-search]", "[data-testid=history-load]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase7_targeted.py",
+    "/app/test_reports/pytest/phase7_results.xml"
+  ],
+  "action_items": [
+    "Fix POST /api/monitoring/{id}/cancel to reject a second cancel with 409/422 (see RCA)."
+  ],
+  "critical_code_review_comments": [
+    "MonitoringController::cancel does not enforce idempotency/rejection for already-CANCELLED sessions — this is the direct source of the double-cancel bug. It also does not consult rowCount() from the UPDATE, so callers cannot tell if cancel really occurred.",
+    "MonitoringSession::cancel uses a WHERE guard on status but silently succeeds when 0 rows are affected; consider returning the affected row count and having the controller act on it.",
+    "AuthController::changePassword expects field name 'current_password' — the field is exposed to admins via UI; consistent naming is fine but ensure API docs / mobile / any other client use the same key."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase7_targeted.py"
+  ],
+  "success_rate": {
+    "backend": "94% (16/17)",
+    "frontend": "100% of tested flows (no console errors; all pages render; critical flows all pass)"
+  },
+  "test_credentials": "admin/admin123 (restored). DANKI danki.a/danki123, DANTON danton.a1/danton123, KOMANDAN komandan/komandan123, WADAN wadan/wadan123.",
+  "seed_data_creation": "Backend tests created transient TEST_ prefixed personnel edits, TEST_IB_*, TEST_QC_*, TEST_GF_*, TEST User (deactivated after), and TEST_UI_IB / TEST_UI_QC via UI. All non-user data left in DB (cancel/complete states); test users were deactivated via PUT (no DELETE endpoint exists).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend already covered by smoke_test.sh (66/66) + this Phase 7 targeted suite (16/17). Only remaining backend defect is double-cancel. Frontend UI flows validated via Playwright inside container against http://127.0.0.1:8899. Note: there is NO DELETE /api/users endpoint (only PUT is-active). MariaDB timezone is Asia/Jakarta while OS is UTC — when creating monitoring sessions via API, use datetime.now()+12h buffer or explicit Jakarta time to avoid auto-COMPLETION on refresh. Change-password endpoint uses key 'current_password' (not 'old_password'). Geofences are circles (latitude/longitude/radius), not polygons.",
+  "rca of the issue": "Double-cancel bug: (1) Reproduce — create IB via POST /api/monitoring/ib, POST /api/monitoring/{id}/cancel twice; both return 200 success. (2) Root cause — MonitoringController::cancel at /app/project/backend/controllers/MonitoringController.php:149 blindly returns Response::success after calling MonitoringSession::cancel(). The model performs 'UPDATE ... WHERE status IN (\"SCHEDULED\",\"ACTIVE\")' which is a no-op on an already CANCELLED row, but no check on prior status or PDOStatement->rowCount() is performed. (3) Mitigation — insert before MonitoringSession::cancel: if ($session['status'] === 'CANCELLED') Response::error('Monitoring sudah dibatalkan.', 409); (Or check rowCount from cancel() and error out on 0.)"
+}

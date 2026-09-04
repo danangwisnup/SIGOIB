@@ -69,12 +69,13 @@ class Alert
     // Throttle INSIDE: true jika sudah ada alert INSIDE yang sama dalam N menit.
     public static function recentInsideExists(int $personnelId, int $geofenceId, int $minutes = 15): bool
     {
+        $cutoff = date('Y-m-d H:i:s', time() - $minutes * 60);
         $stmt = Database::pdo()->prepare(
             'SELECT COUNT(*) FROM alerts
              WHERE personnel_id = ? AND geofence_id = ? AND type = "INSIDE"
-             AND occurred_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)'
+             AND occurred_at > ?'
         );
-        $stmt->execute([$personnelId, $geofenceId, $minutes]);
+        $stmt->execute([$personnelId, $geofenceId, $cutoff]);
         return (int)$stmt->fetchColumn() > 0;
     }
 

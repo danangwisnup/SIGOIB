@@ -195,7 +195,7 @@ Pages.monitoring = {
       box.innerHTML = `
         <div class="panel">
           <div class="panel-head"><h3 data-testid="monitoring-detail-title">${UI.esc(session.name)} ${UI.statusBadge(session.type)} ${UI.statusBadge(session.status)}</h3>
-            <a class="btn sm" href="/api/reports/monitoring/${id}?format=csv" target="_blank" data-testid="export-csv">Export CSV</a></div>
+            <button class="btn sm" id="btn-export-csv" data-testid="export-csv">Export CSV</button></div>
           <div class="panel-body">
             <p class="muted mb16">${UI.fmtDateTime(session.start_at)} s/d ${UI.fmtDateTime(session.end_at)} &bull; Dibuat oleh ${UI.esc(session.created_by_name || '-')}</p>
             <div id="mon-map" data-testid="monitoring-map" class="map-box"></div>
@@ -204,6 +204,10 @@ Pages.monitoring = {
           </div>
         </div>`;
       box.scrollIntoView({ behavior: 'smooth' });
+      document.getElementById('btn-export-csv').onclick = async () => {
+        try { await UI.downloadFile(`/reports/monitoring/${id}?format=csv`, `laporan_${id}.csv`); }
+        catch (e) { UI.toast(e.message, 'error'); }
+      };
       if (this.map) { this.map.remove(); }
       this.map = UI.makeMap('mon-map');
       this.markers = {};

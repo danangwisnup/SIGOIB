@@ -218,6 +218,7 @@ CREATE TABLE alerts (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_alerts_status (status),
   INDEX idx_alerts_personnel (personnel_id),
+  INDEX idx_alerts_throttle (personnel_id, geofence_id, type, occurred_at),
   CONSTRAINT fk_alerts_personnel FOREIGN KEY (personnel_id)
     REFERENCES personnel(id) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT fk_alerts_device FOREIGN KEY (device_id)

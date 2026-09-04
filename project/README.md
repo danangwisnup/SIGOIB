@@ -47,12 +47,21 @@ cp backend/.env.example backend/.env
 # edit DB_HOST, DB_NAME, DB_USER, DB_PASS
 ```
 
-### 3. Seed akun awal
+### 3. Seed akun awal + test data
 
 ```bash
 cd backend
-php database/seed.php
+php database/seed.php          # akun admin/komandan/wadan/danki/danton
+php database/test_data.php     # 8 personel + 1 geofence + 1 device PENDING (idempotent)
 ```
+
+### 3b. Smoke test otomatis (opsional, butuh server dev berjalan)
+
+```bash
+bash scripts/smoke_test.sh     # 66 skenario API end-to-end
+```
+
+> **Timezone:** backend menyelaraskan timezone koneksi MySQL dengan `APP_TIMEZONE` di `.env` secara otomatis (penting agar `NOW()`, expiry token, dan throttle alert konsisten).
 
 Akun default (SEGERA ganti setelah login pertama):
 

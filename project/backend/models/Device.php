@@ -81,8 +81,10 @@ class Device
 
     public static function revoke(int $id): void
     {
+        // Token dipertahankan agar device yang revoked mendapat pesan 403 yang jelas
+        // (middleware menolak semua aksi karena status != ACTIVE).
         $stmt = Database::pdo()->prepare(
-            'UPDATE devices SET status = "REVOKED", device_token = NULL, revoked_at = NOW() WHERE id = ?'
+            'UPDATE devices SET status = "REVOKED", revoked_at = NOW() WHERE id = ?'
         );
         $stmt->execute([$id]);
     }

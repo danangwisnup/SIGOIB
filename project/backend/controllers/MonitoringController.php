@@ -154,6 +154,12 @@ class MonitoringController
         if (!$session) {
             Response::error('Monitoring tidak ditemukan.', 404);
         }
+        if ($session['status'] === 'CANCELLED') {
+            Response::error('Monitoring sudah dibatalkan sebelumnya.', 409);
+        }
+        if ($session['status'] === 'COMPLETED') {
+            Response::error('Monitoring sudah selesai, tidak dapat dibatalkan.', 409);
+        }
         MonitoringSession::cancel((int)$params['id']);
         AuditService::log((int)$user['id'], 'cancel_monitoring', 'monitoring_session', $params['id'],
             'Cancel monitoring "' . $session['name'] . '"');

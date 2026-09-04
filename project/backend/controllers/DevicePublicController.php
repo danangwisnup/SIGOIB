@@ -38,7 +38,10 @@ class DevicePublicController
                     'message' => 'Menunggu persetujuan admin.',
                 ]);
             }
-            // REVOKED: daftarkan ulang sebagai PENDING (perangkat yang sama)
+            // REVOKED: daftarkan ulang sebagai PENDING, hanya untuk personel yang sama
+            if ((int)$existing['personnel_id'] !== (int)$personnel['id']) {
+                Response::error('Perangkat ini terdaftar untuk NRP lain. Hubungi admin.', 409);
+            }
             $stmt = Database::pdo()->prepare(
                 'UPDATE devices SET personnel_id=?, platform=?, model=?, app_version=?, status="PENDING",
                  device_token=NULL, created_at=NOW(), approved_at=NULL, revoked_at=NULL WHERE id=?'

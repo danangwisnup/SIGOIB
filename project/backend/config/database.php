@@ -27,6 +27,9 @@ class Database
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
             ]);
+            // Selaraskan timezone MySQL dengan APP_TIMEZONE PHP agar NOW()
+            // konsisten untuk expiry token, throttle alert, dan status online.
+            self::$pdo->exec("SET time_zone = '" . date('P') . "'");
         }
         return self::$pdo;
     }

@@ -96,6 +96,25 @@ const UI = {
     container.querySelectorAll('button[data-p]').forEach(b => b.onclick = () => onGo(parseInt(b.dataset.p)));
   },
 
+  // Download file yang butuh Authorization header (mis. export CSV).
+  async downloadFile(path, filename) {
+    const res = await fetch('/api' + path, {
+      headers: { 'Authorization': 'Bearer ' + Api.token }
+    });
+    if (!res.ok) {
+      let msg = 'Gagal mengunduh (HTTP ' + res.status + ').';
+      try { msg = (await res.json()).message || msg; } catch (e) {}
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
   async loadOrganizations() {
     if (!UI._orgs) { UI._orgs = (await Api.get('/organizations')).items; }
     return UI._orgs;
