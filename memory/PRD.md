@@ -51,6 +51,14 @@ NOT TESTABLE HERE:
 - `mobile/README.md`: flutter create/pub get/analyze/build apk --release/build ios --release + penjelasan permission Android & iOS.
 - Terverifikasi: seed SQL di-load ke MariaDB bersih → login admin via API PASS; health check endpoint 405 JSON.
 
+### Phase 8.1 (2026-09): Fix flutter analyze — SELESAI
+- `pubspec.yaml`: tambah dev_dependencies `flutter_test` (sdk) + `flutter_lints ^5.0.0`; hapus direct dep `flutter_background_service_android` (simbol `AndroidServiceInstance` sudah dire-export oleh `flutter_background_service` — direct dep juga berisiko konflik versi 6.x vs 5.x).
+- `analysis_options.yaml` (BARU): `include: package:flutter_lints/flutter.yaml`.
+- `test/widget_test.dart` (BARU): test parsing `DeviceStatus` (menggantikan template bawaan `flutter create` yang mereferensikan MyApp tidak ada).
+- `background_service.dart`: hapus unnecessary import flutter_background_service_android.
+- `tracking_controller.dart`: hapus field `_connSub` yang tidak pernah dipakai (subscription tetap aktif, logic tracking tidak berubah).
+- Hasil nyata di pod (Flutter 3.47.2 stable): `flutter pub get` OK (106 deps), `flutter analyze` → **No issues found!**, `flutter test` → model test PASS.
+
 ## Backlog
 - P0: Deploy ke cPanel produksi ikut DEPLOYMENT.md (ganti kredensial, HTTPS, ganti password default).
 - P0: Build & uji APK pada 5–10 perangkat (pilot) — termasuk app minimized, screen locked, phone restart.

@@ -28,14 +28,13 @@ class TrackingController {
   int _gpsInterval = 30;
   bool _wasTracking = false;
   bool _netOnline = true;
-  StreamSubscription? _connSub;
 
   static const int batchSize = 5;
 
   Future<void> start() async {
     if (_running) return;
     _running = true;
-    _connSub = Connectivity().onConnectivityChanged.listen((results) {
+    Connectivity().onConnectivityChanged.listen((results) {
       final online = results.any((r) => r != ConnectivityResult.none);
       if (online != _netOnline) {
         _netOnline = online;
