@@ -1,0 +1,9 @@
+# Docroot = folder project/. Arahkan /api ke backend/api.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^api(/.*)?$ backend/api/index.php [L,QSA]
+</IfModule>
+
+# Lindungi folder backend selain api
+RedirectMatch 403 ^/backend/(?!api/) 
+RedirectMatch 403 ^/backend/\.env
