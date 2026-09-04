@@ -1,0 +1,81 @@
+===== 1. AUTH =====
+PASS: admin login
+PASS: login salah -> 401 msg
+PASS: tanpa token -> 401
+PASS: token invalid -> 401
+===== 2. PERSONNEL + IMPORT =====
+PASS: list personnel (8)
+PASS: import preview valid=2
+PASS: import preview invalid=2
+PASS: import commit imported=2
+PASS: total personnel setelah import (10)
+===== 3. DEVICE LIFECYCLE =====
+PASS: register A -> PENDING
+PASS: register B -> PENDING (kedua boleh pending)
+PASS: NRP tidak dikenal -> error
+PASS: approve A -> ACTIVE+token
+PASS: approve B -> 409 (satu ACTIVE saja)
+PASS: status by uuid -> ACTIVE + token
+PASS: uuid status mengembalikan device_token
+PASS: status by token -> tracking false (belum ada session)
+===== 4. IB LIFECYCLE =====
+PASS: buat IB (mulai sekarang)
+PASS: IB langsung ACTIVE (server time)
+PASS: IB masa depan -> SCHEDULED
+PASS: tracking_required=true saat IB ACTIVE
+PASS: SCHEDULED->ACTIVE otomatis saat start tercapai
+PASS: ACTIVE->COMPLETED otomatis saat end tercapai
+===== 5. LOCATION SYNC + IDEMPOTENCY =====
+PASS: sync inserted=5
+PASS: sync failed=1 (lat invalid)
+PASS: retry batch sama -> duplicated=5, inserted=0
+PASS: personnel_id dari mobile diabaikan (personel 1 tetap 0 lokasi)
+===== 6. GEOFENCE ALERT =====
+PASS: ENTER alert dibuat
+PASS: INSIDE alert dibuat (1x)
+PASS: INSIDE tidak spam (tetap 1)
+PASS: EXIT alert dibuat
+PASS: location_sessions terisi (link ke IB)
+===== 7. QUICK CHECK + OVERLAP =====
+PASS: quick check 30 menit dibuat
+PASS: overlap: active_sessions=2
+PASS: overlap: tracking_required=true
+PASS: QC selesai + IB aktif -> tetap ON
+PASS: semua selesai -> STANDBY (tracking false)
+PASS: server_time ada
+PASS: personnel ada di payload
+===== 8. DASHBOARD / HISTORY / REPORT =====
+PASS: dashboard total_personnel=10
+PASS: dashboard markers endpoint OK
+PASS: history: points>0
+PASS: history: alerts>0
+PASS: report JSON rows>0
+PASS: report CSV berisi header NRP
+===== 9. ROLE AUTHORIZATION (BACKEND) =====
+PASS: DANKI hanya lihat Kompi A (6)
+PASS: DANTON hanya lihat Peleton A1 (4)
+PASS: DANKI akses personel Kompi B -> 404
+PASS: DANKI buat IB -> 403
+PASS: DANKI reject device -> 403
+PASS: DANKI list users -> 403
+PASS: DANKI devices scoped (hanya Kompi A)
+===== 10. REVOKE + REPLACEMENT =====
+PASS: revoke device
+PASS: revoked device sync -> 403
+PASS: revoked device event -> 403
+PASS: revoked device status -> 403
+PASS: status by uuid -> REVOKED msg
+PASS: replacement: register HP baru -> PENDING
+PASS: replacement: approve -> ACTIVE
+PASS: replacement: device baru berfungsi
+PASS: NRP sudah punya ACTIVE -> ditolak
+===== 11. AUDIT LOG =====
+PASS: audit berisi approve_device
+PASS: audit berisi revoke_device
+PASS: audit berisi create_monitoring
+PASS: audit berisi import_personnel
+PASS: audit berisi login
+
+==========================================
+HASIL: PASS=66 FAIL=0
+==========================================
