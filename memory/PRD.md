@@ -69,6 +69,20 @@ NOT TESTABLE HERE:
 - Testing agent iteration_2 (web2): ~92% (17/18 flow). Badge double-escape terverifikasi hilang, meta-refresh policy benar, DANKI scope 6 personel, CSV proxy aman, drawer mobile OK.
 - Fix lanjutan dari iteration_2: `includes/auth.php` kini require `functions.php` (sebelumnya POST handler 500 karena set_flash/fmt_* belum ter-load → flash duplicate-NRP/IB tidak tampil; terverifikasi ulang via curl: flash OK, IB save OK); `.modal` diberi z-index eksplisit di atas backdrop. Catatan: dashboard memang 10 kartu (2 baris) — klaim "5 kartu" adalah salah ukur agent; semua tabel lebar sudah dibungkus `.table-scroll`. Backend double-cancel 409 sudah diperbaiki sejak Phase 7 (terverifikasi curl).
 
+### Phase 10 (2025-07): Audit production-ready — fix force close mobile + web2 revoke — SELESAI (kode)
+ROOT CAUSE force close mobile (setelah approval & saat reopen):
+- `App.tsx` lama memanggil `startServices()` (termasuk `BackgroundService.start()`) TANPA cek status server, langsung saat token ada. Di Android 14 (targetSdk 34) `react-native-background-actions` 4.0.1 tidak mengirim `foregroundServiceType` (baru 4.1.0) → bila manifest tak deklarasikan tipe service, `start()` melempar `ForegroundServiceStartNotAllowedException`/`MissingForegroundServiceTypeException` di NATIVE (tak tertangkap try/catch JS) → force close. Karena startup selalu start FGS saat token ada → reopen crash lagi (crash-loop).
+FIX (TS, `tsc --noEmit` PASS):
+- `App.tsx` di-rewrite jadi state machine SERVER-AUTHORITATIVE: LOADING→(no token)ACTIVATION / (token) initTracking + tanya `statusByToken` → REVOKED/PENDING/SETUP/HOME; offline/error → state lokal aman, tidak crash; 401/403 → RevokedScreen.
+- FGS TIDAK pernah distart di startup. `trackingController` hanya start FGS saat `device_status=ACTIVE && tracking_required` dan dari foreground → tepat setelah approval (belum ada sesi) FGS tak distart → tidak crash. Guard `BackgroundService.isRunning()`/start/stop, Geolocation, NetInfo.
+- `secure.ts` (Keychain) & `queue.ts` (SQLite) dibungkus try/catch: gagal buka DB / baca token → degrade, bukan crash.
+- `PendingScreen.tsx` baru (token ada tapi server PENDING). `RevokedScreen` reactivation → `clearForReactivation()` (stop FGS + clear token) → ActivationScreen.
+- Single GPS stream dipertahankan (satu boolean `tracking`; overlap IB+QuickCheck tidak membuat stream kedua; server yang menentukan).
+- `NATIVE_ANDROID_CHANGES.md` (BARU): perubahan manifest WAJIB (service `RNBackgroundActionsTask` + `foregroundServiceType="location"`, permission FOREGROUND_SERVICE_LOCATION/POST_NOTIFICATIONS/WAKE_LOCK/background location, target/compileSdk). TIDAK regenerate android/ios (folder native ada di build user).
+WEB2 revoke:
+- Route `/api/devices/{id}/revoke` + handler `.confirm-form`+modal + role (ADMIN∈WEB2_MANAGE_ROLES) + z-index semua BENAR di source. Tidak ditemukan bug pemutus definitif dari source statis. Diperkeras defensif di `includes/footer.php`: konfirmasi diubah ke EVENT DELEGATION di document + guard elemen modal + fallback submit native (tombol tak pernah "mati" walau ada error JS/timing).
+KETERBATASAN VERIFIKASI: pod ini TIDAK menjalankan PHP/MySQL (atas permintaan user) dan TIDAK ada Android SDK/emulator (folder native tidak diregenerate). Build APK, emulator, dan flow web2 runtime BELUM DAPAT DIVERIFIKASI di sini; hanya `tsc` mobile PASS + audit source. Perubahan manifest native harus diterapkan user di project build-nya.
+
 ## Backlog
 - P0: Deploy ke cPanel produksi ikut DEPLOYMENT.md (ganti kredensial, HTTPS, ganti password default).
 - P0: Build & uji APK pada 5–10 perangkat (pilot) — termasuk app minimized, screen locked, phone restart.

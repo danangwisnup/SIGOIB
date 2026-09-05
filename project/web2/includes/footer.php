@@ -55,23 +55,39 @@
         });
     });
 
-    // Konfirmasi aksi berisiko global: <form class="confirm-form" data-confirm="Judul|Pesan|Label Tombol">
+    // Konfirmasi aksi berisiko global (event delegation -> robust untuk konten apa pun):
+    // <form class="confirm-form" data-confirm="Judul|Pesan|Label Tombol">
+    // Delegasi di document memastikan tombol (mis. REVOKE) selalu berfungsi walau ada
+    // banyak form / form ditambahkan setelah load. Bila markup modal tidak lengkap,
+    // submit native tetap berjalan sehingga tombol TIDAK pernah "mati".
     var pendingForm = null;
-    document.querySelectorAll('form.confirm-form').forEach(function (f) {
-        f.addEventListener('submit', function (e) {
-            e.preventDefault();
-            pendingForm = f;
-            var parts = (f.getAttribute('data-confirm') || 'Konfirmasi?|Lanjutkan?|YA').split('|');
-            document.getElementById('cfTitle').textContent = parts[0];
-            document.getElementById('cfBody').textContent = parts[1] || '';
-            document.getElementById('cfYes').textContent = parts[2] || 'YA';
-            document.getElementById('confirmModal').classList.add('show');
-        });
-    });
+    var cfModal = document.getElementById('confirmModal');
+    var cfTitle = document.getElementById('cfTitle');
+    var cfBody = document.getElementById('cfBody');
     var cfYes = document.getElementById('cfYes');
+
+    document.addEventListener('submit', function (e) {
+        var f = e.target;
+        if (!f || !f.classList || !f.classList.contains('confirm-form')) return;
+        if (!cfModal || !cfTitle || !cfBody || !cfYes) return; // fallback: submit native
+        e.preventDefault();
+        pendingForm = f;
+        var parts = (f.getAttribute('data-confirm') || 'Konfirmasi?|Lanjutkan?|YA').split('|');
+        cfTitle.textContent = parts[0];
+        cfBody.textContent = parts[1] || '';
+        cfYes.textContent = parts[2] || 'YA';
+        cfModal.classList.add('show');
+    });
+
     if (cfYes) {
         cfYes.addEventListener('click', function () {
-            if (pendingForm) pendingForm.submit();
+            var f = pendingForm;
+            pendingForm = null;
+            if (cfModal) cfModal.classList.remove('show');
+            if (!f) return;
+            // HTMLFormElement.submit() melewati listener submit -> tidak memicu modal lagi.
+            if (typeof f.submit === 'function') f.submit();
+            else f.dispatchEvent(new Event('submit'));
         });
     }
 })();
