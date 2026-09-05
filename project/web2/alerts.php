@@ -4,10 +4,9 @@ $user = require_login();
 
 $pageTitle = 'Alert';
 $activeMenu = 'alerts';
-$needMap = true;
 $liveRefresh = true;
 
-// Aksi: acknowledge / resolve
+// Fallback non-JS: acknowledge / resolve (JS memakai api/action.php async).
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
     $id = (int)($_POST['alert_id'] ?? 0);
@@ -17,22 +16,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         set_flash($r['ok'] ? 'success' : 'error',
             $r['ok'] ? 'Status alert diperbarui.' : ($r['message'] ?: 'Gagal memperbarui alert. Silakan coba lagi.'));
     }
-    header('Location: alerts.php?' . http_build_query(array_diff_key($_GET, [])));
+    header('Location: alerts.php' . (($_GET['status'] ?? '') ? '?status=' . urlencode($_GET['status']) : ''));
     exit;
 }
 
 $statusFilter = (string)($_GET['status'] ?? '');
 if (!in_array($statusFilter, ['OPEN', 'ACKNOWLEDGED', 'RESOLVED'], true)) $statusFilter = '';
-$page = max(1, (int)($_GET['page'] ?? 1));
-$params = ['page' => $page, 'per_page' => 20];
+$params = ['page' => 1, 'per_page' => 20];
 if ($statusFilter) $params['status'] = $statusFilter;
 $res = api_get('/alerts?' . http_build_query($params));
-$data = $res['ok'] ? $res['data'] : ['items' => [], 'total' => 0, 'per_page' => 20, 'page' => 1];
-$topbarOpenAlerts = (int)$data['total'] ?: null;
-if ($statusFilter !== 'OPEN') {
-    $openRes = api_get('/alerts?status=OPEN&per_page=1');
-    $topbarOpenAlerts = $openRes['ok'] ? (int)$openRes['data']['total'] : null;
-}
+$items = $res['ok'] ? ($res['data']['items'] ?? []) : [];
+$openRes = api_get('/alerts?status=OPEN&per_page=1');
+$topbarOpenAlerts = $openRes['ok'] ? (int)$openRes['data']['total'] : null;
 
 include __DIR__ . '/includes/header.php';
 ?>
@@ -46,71 +41,66 @@ include __DIR__ . '/includes/header.php';
             <a href="alerts.php?status=RESOLVED" class="<?= $statusFilter === 'RESOLVED' ? 'active' : '' ?>">SELESAI</a>
         </div>
     </div>
-    <div class="panel-body flush">
-        <?php if (!$data['items']): ?>
-            <div class="empty"><span class="empty-icon">✓</span>Tidak ada alert aktif.</div>
-        <?php endif; ?>
-        <?php foreach ($data['items'] as $a): ?>
-        <div class="alert-item" data-testid="alert-<?= (int)$a['id'] ?>">
-            <span class="ai-icon">⚠</span>
-            <div class="ai-body">
-                <b><?= e($a['personnel_name']) ?></b> (NRP <?= e($a['nrp']) ?>)
-                <?= badge($a['type']) ?>
-                <?= e($a['type'] === 'EXIT' ? 'keluar dari Area Terlarang' : ($a['type'] === 'INSIDE' ? 'sedang berada di Area Terlarang' : 'memasuki Area Terlarang')) ?>
-                <b><?= e($a['geofence_name'] ?? '-') ?></b>
-                <div class="ai-meta">Waktu: <?= fmt_dt($a['occurred_at']) ?> &middot; Status: <?= badge($a['status']) ?></div>
-            </div>
-            <div class="toolbar">
-                <?php if ($a['latitude'] !== null): ?>
-                <button class="btn btn-sm" data-modal-open="alertMap<?= (int)$a['id'] ?>" data-testid="alert-map-<?= (int)$a['id'] ?>">LIHAT PETA</button>
-                <?php endif; ?>
-                <?php if ($a['status'] === 'OPEN'): ?>
-                <form method="post" style="display:inline">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="alert_id" value="<?= (int)$a['id'] ?>">
-                    <input type="hidden" name="status" value="ACKNOWLEDGED">
-                    <button class="btn btn-sm" type="submit" data-testid="ack-<?= (int)$a['id'] ?>">ACKNOWLEDGE</button>
-                </form>
-                <?php endif; ?>
-                <?php if ($a['status'] !== 'RESOLVED'): ?>
-                <form method="post" style="display:inline">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="alert_id" value="<?= (int)$a['id'] ?>">
-                    <input type="hidden" name="status" value="RESOLVED">
-                    <button class="btn btn-sm btn-success" type="submit" data-testid="resolve-<?= (int)$a['id'] ?>">RESOLVE</button>
-                </form>
-                <?php endif; ?>
-            </div>
-        </div>
-        <?php if ($a['latitude'] !== null): ?>
-        <div class="modal-backdrop" id="alertMap<?= (int)$a['id'] ?>">
-            <div class="modal">
-                <h3>Lokasi Alert — <?= e($a['personnel_name']) ?></h3>
-                <div id="map<?= (int)$a['id'] ?>" class="map-box sm"></div>
-                <div class="form-actions"><button class="btn" data-modal-close>TUTUP</button></div>
-            </div>
-        </div>
-        <?php endif; ?>
-        <?php endforeach; ?>
+    <div class="panel-body flush" id="alertList" data-status="<?= e($statusFilter) ?>">
+        <div class="empty"><span class="empty-icon">⟲</span>Memuat…</div>
     </div>
-    <?= pagination_html((int)$data['page'], (int)$data['per_page'], (int)$data['total']) ?>
 </div>
 <script>
-// Init peta kecil saat modal dibuka (Leaflet saja, bukan app layer).
-document.querySelectorAll('[data-modal-open^="alertMap"]').forEach(function (b) {
-    b.addEventListener('click', function () {
-        var id = b.getAttribute('data-modal-open');
-        setTimeout(function () {
-            var el = document.getElementById(id.replace('alertMap', 'map'));
-            if (!el || el.dataset.init) return;
-            el.dataset.init = '1';
-            <?php foreach ($data['items'] as $a): if ($a['latitude'] === null) continue; ?>
-            if (id === 'alertMap<?= (int)$a['id'] ?>') {
-                var m = web2MakeMap('map<?= (int)$a['id'] ?>', [<?= (float)$a['latitude'] ?>, <?= (float)$a['longitude'] ?>], 16);
-                L.marker([<?= (float)$a['latitude'] ?>, <?= (float)$a['longitude'] ?>]).addTo(m);
+window.addEventListener('load', function () {
+    var L2 = window.Web2Live;
+    var box = document.getElementById('alertList');
+    var STATUS = box.getAttribute('data-status');
+    var items = <?= json_encode(array_values($items), JSON_UNESCAPED_UNICODE) ?>;
+
+    function verb(t) { return t === 'EXIT' ? 'keluar dari Area Terlarang' : (t === 'INSIDE' ? 'sedang berada di Area Terlarang' : 'memasuki Area Terlarang'); }
+
+    function render() {
+        if (!items.length) { box.innerHTML = '<div class="empty"><span class="empty-icon">✓</span>Tidak ada alert.</div>'; return; }
+        box.innerHTML = items.map(function (a) {
+            var actions = '';
+            if (a.latitude != null) {
+                actions += '<a class="btn btn-sm" target="_blank" rel="noopener" href="' + web2GmapsLink(a.latitude, a.longitude) + '" data-testid="alert-map-' + a.id + '">BUKA DI GOOGLE MAPS</a> ';
             }
-            <?php endforeach; ?>
-        }, 80);
+            if (a.status === 'OPEN') {
+                actions += '<button class="btn btn-sm" data-alert-act="ACKNOWLEDGED" data-id="' + a.id + '" data-testid="ack-' + a.id + '">ACKNOWLEDGE</button> ';
+            }
+            if (a.status !== 'RESOLVED') {
+                actions += '<button class="btn btn-sm btn-success" data-alert-act="RESOLVED" data-id="' + a.id + '" data-testid="resolve-' + a.id + '">RESOLVE</button>';
+            }
+            return '<div class="alert-item" data-testid="alert-' + a.id + '"><span class="ai-icon">⚠</span>' +
+                '<div class="ai-body"><b>' + L2.esc(a.personnel_name) + '</b> (NRP ' + L2.esc(a.nrp) + ') ' +
+                chipType(a.type) + ' ' + verb(a.type) + ' <b>' + L2.esc(a.geofence_name || '-') + '</b>' +
+                '<div class="ai-meta">Waktu: ' + L2.esc(a.occurred_at || '-') + ' · ' + L2.ago(a.occurred_at) + ' · Status: ' + chip(a.status) + '</div></div>' +
+                '<div class="toolbar">' + actions + '</div></div>';
+        }).join('');
+    }
+    function chip(s) { return '<span class="chip chip-' + String(s).toLowerCase().replace(/[^a-z]/g, '') + '">' + s + '</span>'; }
+    function chipType(t) { return '<span class="chip chip-alert">' + t + '</span>'; }
+
+    document.addEventListener('click', async function (e) {
+        var btn = e.target.closest ? e.target.closest('[data-alert-act]') : null;
+        if (!btn) return;
+        e.preventDefault();
+        var id = parseInt(btn.getAttribute('data-id'), 10);
+        var status = btn.getAttribute('data-alert-act');
+        btn.disabled = true; btn.textContent = '...';
+        var res = await L2.action({ kind: 'alert', id: id, status: status });
+        if (res.ok) {
+            L2.toast('Status alert diperbarui.', 'success');
+            items = items.map(function (a) { if (a.id === id) a.status = status; return a; });
+            if (STATUS && STATUS !== status) items = items.filter(function (a) { return a.id !== id; });
+            render();
+        } else {
+            L2.toast(res.message || 'Gagal memperbarui alert.', 'error');
+            btn.disabled = false;
+        }
+    });
+
+    render();
+    L2.poll('alerts', function () { return 'api/live.php?feed=alerts' + (STATUS ? '&status=' + STATUS : ''); }, 10000, function (data, ok) {
+        if (!ok || !data || !data.ok) return;
+        items = data.items || [];
+        render();
     });
 });
 </script>

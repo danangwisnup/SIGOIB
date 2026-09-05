@@ -4,6 +4,9 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="assets/js/map.js"></script>
 <?php endif; ?>
+<script>window.WEB2_CSRF = "<?= csrf_token() ?>";</script>
+<script src="assets/js/live.js"></script>
+<div id="toastWrap" class="toast-wrap"></div>
 <script>
 // JS minimal: sidebar drawer/collapse, countdown refresh, modal, konfirmasi.
 (function () {

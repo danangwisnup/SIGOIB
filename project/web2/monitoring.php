@@ -8,7 +8,7 @@ $activeMenu = 'monitoring';
 $needMap = true;
 $liveRefresh = true;
 
-// Aksi: cancel session (POST + CSRF + role check server-side PHP; backend juga menegakkan)
+// Aksi cancel session (fallback non-JS; JS memakai api/action.php tanpa reload).
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cancel') {
     csrf_verify();
     if (!$manage) {
@@ -19,12 +19,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cance
         set_flash($r['ok'] ? 'success' : 'error',
             $r['ok'] ? 'Monitoring berhasil dibatalkan.' : ($r['message'] ?: 'Monitoring gagal dibatalkan. Silakan coba lagi.'));
     }
-    header('Location: monitoring.php' . (isset($_POST['back']) ? '?' . $_POST['back'] : ''));
+    header('Location: monitoring.php');
     exit;
 }
 
 $typeFilter = $_GET['type'] ?? '';
 $typeFilter = in_array($typeFilter, ['IB', 'QUICK_CHECK'], true) ? $typeFilter : '';
+$sessionId = (int)($_GET['session'] ?? 0);
 
 $listRes = api_get('/monitoring');
 $sessions = $listRes['ok'] ? ($listRes['data']['items'] ?? []) : [];
@@ -32,56 +33,13 @@ if ($typeFilter) {
     $sessions = array_values(array_filter($sessions, fn($s) => $s['type'] === $typeFilter));
 }
 
-// Detail session terpilih + peta personel
-$detail = null;
-$markers = [];
-if (!empty($_GET['session'])) {
-    $sid = (int)$_GET['session'];
-    $dRes = api_get('/monitoring/' . $sid);
-    $mRes = api_get('/monitoring/' . $sid . '/locations');
-    if ($dRes['ok']) {
-        $detail = $dRes['data']['session'];
-        $markers = $mRes['ok'] ? ($mRes['data']['markers'] ?? []) : [];
-    } else {
-        set_flash('error', $dRes['message'] ?: 'Monitoring tidak ditemukan.');
-        header('Location: monitoring.php');
-        exit;
-    }
-}
-
-// Filter tabel personel (GET) di sisi PHP dari data marker
-$fQ = trim((string)($_GET['q'] ?? ''));
-$fCompany = (string)($_GET['company'] ?? '');
-$fPlatoon = (string)($_GET['platoon'] ?? '');
-$fStatus = (string)($_GET['status'] ?? '');
-$filtered = $markers;
-if ($fQ !== '') {
-    $filtered = array_filter($filtered, fn($m) =>
-        stripos($m['nrp'], $fQ) !== false || stripos($m['name'], $fQ) !== false);
-}
-if ($fCompany !== '') {
-    $filtered = array_filter($filtered, fn($m) => ($m['company_name'] ?? '') === $fCompany);
-}
-if ($fPlatoon !== '') {
-    $filtered = array_filter($filtered, fn($m) => ($m['platoon_name'] ?? '') === $fPlatoon);
-}
-if ($fStatus !== '') {
-    $filtered = array_filter($filtered, fn($m) => $m['status'] === $fStatus);
-}
-$filtered = array_values($filtered);
-$companies = array_values(array_unique(array_filter(array_column($markers, 'company_name'))));
-$platoons = array_values(array_unique(array_filter(array_column($markers, 'platoon_name'))));
-sort($companies); sort($platoons);
-
-$mapMarkers = [];
-foreach ($filtered as $m) {
-    $mapMarkers[] = [
-        'lat' => $m['latitude'], 'lng' => $m['longitude'], 'status' => $m['status'],
-        'name' => $m['name'], 'nrp' => $m['nrp'],
-        'company' => $m['company_name'], 'platoon' => $m['platoon_name'],
-        'battery' => $m['battery'], 'last_seen' => fmt_time($m['last_update'] ?? null),
-        'detail_url' => 'history.php?q=' . urlencode($m['nrp']),
-    ];
+// Data awal peta/daftar (semua personel dalam sesi aktif, atau personel 1 sesi bila dipilih).
+if ($sessionId) {
+    $mRes = api_get('/monitoring/' . $sessionId . '/locations');
+    $initMarkers = $mRes['ok'] ? ($mRes['data']['markers'] ?? []) : [];
+} else {
+    $mRes = api_get('/dashboard/locations');
+    $initMarkers = $mRes['ok'] ? ($mRes['data']['markers'] ?? []) : [];
 }
 
 include __DIR__ . '/includes/header.php';
@@ -140,80 +98,139 @@ include __DIR__ . '/includes/header.php';
     </div>
 </div>
 
-<?php if ($detail): ?>
-<div class="panel" data-testid="monitoring-detail">
+<div class="panel" data-testid="monitoring-live">
     <div class="panel-head">
-        <h2><?= e($detail['name']) ?> <?= badge($detail['type']) ?> <?= badge($detail['status']) ?></h2>
-        <span class="muted"><?= fmt_dt($detail['start_at']) ?> s/d <?= fmt_dt($detail['end_at']) ?></span>
+        <h2>Control Center — Posisi Personel<?= $sessionId ? ' (Sesi #' . (int)$sessionId . ')' : '' ?></h2>
+        <span class="muted">Diperbarui otomatis · <span id="monCount">0</span> personel · <span id="monClock">-</span></span>
     </div>
     <div class="panel-body">
-        <div id="monMap" class="map-box" data-testid="monitoring-map"></div>
-        <div class="legend">
-            <span><i style="background:#2e7d32"></i>Tracking / Online</span>
-            <span><i style="background:#c5a100"></i>Terlambat</span>
-            <span><i style="background:#c62828"></i>Alert / Offline</span>
-            <span><i style="background:#9aa094"></i>Standby</span>
-        </div>
-    </div>
-    <div class="panel-body flush">
-        <div class="panel-body" style="border-bottom:1px solid var(--border)">
-            <form method="get" class="toolbar" data-testid="monitoring-filter">
-                <input type="hidden" name="session" value="<?= (int)$detail['id'] ?>">
-                <input name="q" value="<?= e($fQ) ?>" placeholder="Cari NRP / Nama" data-testid="filter-q">
-                <select name="company" data-testid="filter-company">
-                    <option value="">Semua Kompi</option>
-                    <?php foreach ($companies as $c): ?>
-                    <option value="<?= e($c) ?>" <?= $fCompany === $c ? 'selected' : '' ?>><?= e($c) ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <select name="platoon">
-                    <option value="">Semua Peleton</option>
-                    <?php foreach ($platoons as $p): ?>
-                    <option value="<?= e($p) ?>" <?= $fPlatoon === $p ? 'selected' : '' ?>><?= e($p) ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <select name="status" data-testid="filter-status">
-                    <option value="">Semua Status</option>
-                    <?php foreach (['TRACKING' => 'Tracking/Online', 'TERLAMBAT' => 'Terlambat', 'ALERT' => 'Alert', 'OFFLINE' => 'Offline', 'NO_DEVICE' => 'Tanpa Perangkat'] as $k => $v): ?>
-                    <option value="<?= $k ?>" <?= $fStatus === $k ? 'selected' : '' ?>><?= e($v) ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <button class="btn btn-sm btn-primary" type="submit">TERAPKAN</button>
-                <a class="btn btn-sm" href="monitoring.php?session=<?= (int)$detail['id'] ?>">RESET</a>
-            </form>
-        </div>
-        <div class="table-scroll">
-        <?php if (!$filtered): ?>
-            <div class="empty"><span class="empty-icon">♟</span>Tidak ada personel ditemukan.</div>
-        <?php else: ?>
-        <table class="tbl" data-testid="monitoring-personnel">
-            <thead><tr><th>Status</th><th>NRP</th><th>Nama</th><th>Pangkat</th><th>Kompi</th><th>Peleton</th><th>Battery</th><th>Last Seen</th><th>Action</th></tr></thead>
-            <tbody>
-            <?php foreach ($filtered as $m): ?>
-                <tr>
-                    <td><?= badge($m['status']) ?></td>
-                    <td><?= e($m['nrp']) ?></td>
-                    <td><b><?= e($m['name']) ?></b></td>
-                    <td><?= e($m['rank'] ?? '-') ?></td>
-                    <td><?= e($m['company_name'] ?? '-') ?></td>
-                    <td><?= e($m['platoon_name'] ?? '-') ?></td>
-                    <td><?= e(fmt_battery($m['battery'])) ?></td>
-                    <td><?= fmt_time($m['last_seen_at'] ?? null) ?></td>
-                    <td><a class="btn btn-sm" href="history.php?q=<?= urlencode($m['nrp']) ?>">RIWAYAT</a></td>
-                </tr>
-            <?php endforeach; ?>
-            </tbody>
-        </table>
-        <?php endif; ?>
+        <div class="mon-split">
+            <div class="panel" style="box-shadow:none;margin:0">
+                <div class="panel-body" style="border-bottom:1px solid var(--border)">
+                    <input id="monSearch" placeholder="Cari NRP / Nama" style="width:100%;margin-bottom:8px" data-testid="filter-q">
+                    <div class="toolbar">
+                        <select id="monCompany" data-testid="filter-company"><option value="">Semua Kompi</option></select>
+                        <select id="monPlatoon"><option value="">Semua Peleton</option></select>
+                        <select id="monStatus" data-testid="filter-status">
+                            <option value="">Semua Status</option>
+                            <option value="TRACKING">Tracking/Online</option>
+                            <option value="TERLAMBAT">Terlambat</option>
+                            <option value="ALERT">Alert</option>
+                            <option value="OFFLINE">Offline</option>
+                            <option value="NO_DEVICE">Tanpa Perangkat</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mon-list" id="monList" data-testid="monitoring-personnel"></div>
+            </div>
+            <div>
+                <div id="monMap" class="map-box" data-testid="monitoring-map"></div>
+                <div class="legend">
+                    <span><i style="background:#2e7d32"></i>Tracking / Online</span>
+                    <span><i style="background:#c5a100"></i>Terlambat</span>
+                    <span><i style="background:#c62828"></i>Alert / Offline</span>
+                    <span><i style="background:#9aa094"></i>Standby / Tanpa Perangkat</span>
+                </div>
+            </div>
         </div>
     </div>
 </div>
+
 <script>
 window.addEventListener('load', function () {
-    var map = web2MakeMap('monMap');
-    web2RenderMarkers(map, <?= json_encode($mapMarkers, JSON_UNESCAPED_UNICODE) ?>);
+    var L2 = window.Web2Live;
+    var state = web2LiveMap('monMap');
+    var SESSION = <?= (int)$sessionId ?>;
+    var markers = <?= json_encode(array_values($initMarkers), JSON_UNESCAPED_UNICODE) ?>;
+
+    function statusKey(m) { return (m.status || 'OFFLINE'); }
+    function connText(m) {
+        var c = L2.connFromSeen(m.last_seen_at);
+        return c + ' • ' + L2.ago(m.last_seen_at);
+    }
+
+    function fillFilterOptions() {
+        var comp = {}, plat = {};
+        markers.forEach(function (m) {
+            if (m.company_name) comp[m.company_name] = 1;
+            if (m.platoon_name) plat[m.platoon_name] = 1;
+        });
+        syncSelect('monCompany', Object.keys(comp).sort());
+        syncSelect('monPlatoon', Object.keys(plat).sort());
+    }
+    function syncSelect(id, values) {
+        var el = document.getElementById(id);
+        var cur = el.value;
+        var base = el.querySelector('option').outerHTML;
+        el.innerHTML = base + values.map(function (v) {
+            return '<option value="' + L2.esc(v) + '">' + L2.esc(v) + '</option>';
+        }).join('');
+        el.value = cur;
+    }
+
+    function applyFilter(list) {
+        var q = (document.getElementById('monSearch').value || '').toLowerCase();
+        var c = document.getElementById('monCompany').value;
+        var p = document.getElementById('monPlatoon').value;
+        var s = document.getElementById('monStatus').value;
+        return list.filter(function (m) {
+            if (q && (m.nrp + ' ' + m.name).toLowerCase().indexOf(q) === -1) return false;
+            if (c && (m.company_name || '') !== c) return false;
+            if (p && (m.platoon_name || '') !== p) return false;
+            if (s && statusKey(m) !== s) return false;
+            return true;
+        });
+    }
+
+    function renderList() {
+        var list = applyFilter(markers);
+        document.getElementById('monCount').textContent = markers.length;
+        var box = document.getElementById('monList');
+        if (!list.length) { box.innerHTML = '<div class="empty"><span class="empty-icon">♟</span>Tidak ada personel.</div>'; return; }
+        box.innerHTML = list.map(function (m) {
+            var k = statusKey(m).toLowerCase();
+            return '<div class="person-row" data-pid="' + m.personnel_id + '">' +
+                '<span class="sdot sdot-' + k + '"></span>' +
+                '<div class="pr-body">' +
+                  '<div class="pr-name">' + L2.esc(m.name) + '</div>' +
+                  '<div class="pr-meta">' + L2.esc(m.nrp) + ' · ' + L2.esc(m.company_name || '-') + ' / ' + L2.esc(m.platoon_name || '-') + '</div>' +
+                  '<div class="pr-line"><span class="chip chip-' + k + '">' + statusKey(m) + '</span> ' +
+                     L2.esc(connText(m)) + '</div>' +
+                  '<div class="pr-line pr-meta">Battery: ' + (m.battery != null ? m.battery + '%' : '-') +
+                     (m.latitude != null ? ' · <a target="_blank" rel="noopener" href="' + web2GmapsLink(m.latitude, m.longitude) + '">Google Maps</a>' : '') +
+                     ' · <a href="history.php?q=' + encodeURIComponent(m.nrp) + '">Riwayat</a></div>' +
+                '</div></div>';
+        }).join('');
+        Array.prototype.forEach.call(box.querySelectorAll('.person-row'), function (row) {
+            row.addEventListener('click', function () {
+                Array.prototype.forEach.call(box.querySelectorAll('.person-row'), function (r) { r.classList.remove('active'); });
+                row.classList.add('active');
+                web2FocusMarker(state, parseInt(row.getAttribute('data-pid'), 10));
+            });
+        });
+    }
+
+    function refresh(data, ok) {
+        if (!ok || !data || !data.ok) { document.getElementById('monClock').textContent = 'server bermasalah'; return; }
+        markers = (data.markers || []);
+        document.getElementById('monClock').textContent = data.server_time;
+        fillFilterOptions();
+        renderList();
+        web2UpsertMarkers(state, markers);
+    }
+
+    ['monSearch', 'monCompany', 'monPlatoon', 'monStatus'].forEach(function (id) {
+        document.getElementById(id).addEventListener('input', renderList);
+        document.getElementById(id).addEventListener('change', renderList);
+    });
+
+    fillFilterOptions();
+    renderList();
+    web2UpsertMarkers(state, markers);
+
+    L2.poll('monitoring', function () {
+        return 'api/live.php?feed=monitoring' + (SESSION ? '&session=' + SESSION : '');
+    }, 10000, refresh);
 });
 </script>
-<?php endif; ?>
-
 <?php include __DIR__ . '/includes/footer.php'; ?>

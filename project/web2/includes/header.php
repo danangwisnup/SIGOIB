@@ -10,9 +10,7 @@ $liveRefresh = $liveRefresh ?? false;
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= e($pageTitle ?? 'SIGoIB') ?> — SIGoIB</title>
-<?php if ($liveRefresh): ?>
-<meta http-equiv="refresh" content="<?= WEB2_REFRESH_SECONDS ?>">
-<?php endif; ?>
+<?php /* Auto-refresh memakai polling JS async (assets/js/live.js), BUKAN meta refresh / reload halaman. */ ?>
 <?php if ($needMap): ?>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <?php endif; ?>

@@ -98,7 +98,20 @@ include __DIR__ . '/includes/header.php';
         </div>
 
         <?php if ($routePoints): ?>
-        <div id="histMap" class="map-box" data-testid="history-map"></div>
+        <div class="mon-split">
+            <div class="panel" style="box-shadow:none;margin:0">
+                <div class="panel-head"><h3 style="margin:0">Titik Perjalanan</h3></div>
+                <div class="route-list" id="routeList" data-testid="route-list"></div>
+            </div>
+            <div>
+                <div id="histMap" class="map-box" data-testid="history-map"></div>
+                <div class="legend">
+                    <span><i style="background:#2e7d32"></i>Titik Awal</span>
+                    <span><i style="background:#3f5233"></i>Perjalanan</span>
+                    <span><i style="background:#c62828"></i>Posisi Terakhir</span>
+                </div>
+            </div>
+        </div>
         <?php else: ?>
         <div class="empty"><span class="empty-icon">◎</span>Tidak ada titik GPS pada rentang ini. Detail GPS disimpan sekitar 90 hari.</div>
         <?php endif; ?>
@@ -124,7 +137,32 @@ include __DIR__ . '/includes/header.php';
 <?php if ($routePoints): ?>
 <script>
 window.addEventListener('load', function () {
-    web2RenderRoute(web2MakeMap('histMap'), <?= json_encode($routePoints, JSON_UNESCAPED_UNICODE) ?>);
+    var points = <?= json_encode($routePoints, JSON_UNESCAPED_UNICODE) ?>;
+    var map = web2MakeMap('histMap');
+    web2RenderRoute(map, points);
+
+    // Daftar titik: WAKTU | POSISI | STATUS. Klik -> fokus peta.
+    var box = document.getElementById('routeList');
+    if (box) {
+        box.innerHTML = points.map(function (p, i) {
+            var status = i === 0 ? 'Mulai' : (i === points.length - 1 ? 'Terakhir' : 'Bergerak');
+            var pos = p.lat.toFixed(5) + ', ' + p.lng.toFixed(5);
+            return '<div class="route-row" data-i="' + i + '">' +
+                '<div><div class="rr-time">' + (p.recorded_at || '-') + '</div>' +
+                '<div class="rr-pos">' + pos + '</div></div>' +
+                '<div><span class="chip chip-' + (i === 0 ? 'online' : (i === points.length - 1 ? 'offline' : 'standby')) + '">' + status + '</span>' +
+                '<br><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=' + p.lat + ',' + p.lng + '">Google Maps</a></div>' +
+                '</div>';
+        }).join('');
+        Array.prototype.forEach.call(box.querySelectorAll('.route-row'), function (row) {
+            row.addEventListener('click', function () {
+                var p = points[parseInt(row.getAttribute('data-i'), 10)];
+                map.setView([p.lat, p.lng], 17, { animate: true });
+                L.popup().setLatLng([p.lat, p.lng]).setContent((p.recorded_at || '') +
+                    '<br><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=' + p.lat + ',' + p.lng + '">BUKA DI GOOGLE MAPS</a>').openOn(map);
+            });
+        });
+    }
 });
 </script>
 <?php endif; ?>
