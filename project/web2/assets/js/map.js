@@ -23,15 +23,17 @@ function web2MarkerPopup(m) {
   var lng = m.longitude != null ? m.longitude : m.lng;
   var html = '<b>' + (m.name || '') + '</b><br>NRP: ' + (m.nrp || '-') +
     '<br>' + (m.company_name || m.company || '-') + ' / ' + (m.platoon_name || m.platoon || '-') +
-    '<br>Status: ' + (m.status || '-') +
-    '<br>Battery: ' + (m.battery != null ? m.battery + '%' : '-') +
+    '<br>Status: ' + (m.status || '-');
+  if (m.monitored !== undefined) {
+    html += '<br>Monitoring: ' + (m.monitored
+      ? 'DIMONITOR' + (m.session_name ? ' (' + m.session_name + ')' : '')
+      : 'TIDAK DIMONITOR');
+  }
+  html += '<br>Battery: ' + (m.battery != null ? m.battery + '%' : '-') +
     '<br>Akurasi: ' + (m.accuracy != null ? Math.round(m.accuracy) + ' m' : '-') +
     '<br>Last seen: ' + (m.last_seen || m.last_seen_at || '-');
   if (lat != null && lng != null) {
     html += '<br><a target="_blank" rel="noopener" href="' + web2GmapsLink(lat, lng) + '"><b>BUKA DI GOOGLE MAPS</b></a>';
-  }
-  if (m.nrp) {
-    html += '<br><a href="history.php?q=' + encodeURIComponent(m.nrp) + '">RIWAYAT PERJALANAN</a>';
   }
   return html;
 }
@@ -75,6 +77,9 @@ function web2UpsertMarkers(state, markers) {
     } else {
       var mk = L.circleMarker(ll, { radius: 9, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }).addTo(state.map);
       mk.bindPopup(web2MarkerPopup(m));
+      (function (pid) {
+        mk.on('click', function () { if (typeof state.onMarkerClick === 'function') { state.onMarkerClick(pid); } });
+      })(id);
       state.reg[id] = { marker: mk, data: m };
     }
   });
@@ -125,4 +130,52 @@ function web2RenderRoute(map, points) {
       '<br><a target="_blank" rel="noopener" href="' + web2GmapsLink(last.lat, last.lng) + '">BUKA DI GOOGLE MAPS</a>');
   map.fitBounds(latlngs, { padding: [34, 34] });
   return { start: start };
+}
+
+// ── ROUTE OVERLAY untuk LIVE map (dipakai monitoring.php inline) ──
+// Digambar di atas map yang SAMA (tidak recreate map). LayerGroup lama dibersihkan
+// sebelum menggambar yang baru sehingga hanya route personel terpilih yang tampil.
+function web2RoutePointPopup(p, label) {
+  return (label ? '<b>' + label + '</b><br>' : '') +
+    (p.recorded_at || '') +
+    '<br>' + Number(p.lat).toFixed(6) + ', ' + Number(p.lng).toFixed(6) +
+    (p.accuracy != null ? '<br>Akurasi: ' + Math.round(p.accuracy) + ' m' : '') +
+    (p.battery != null ? '<br>Baterai: ' + p.battery + '%' : '') +
+    '<br><a target="_blank" rel="noopener" href="' + web2GmapsLink(p.lat, p.lng) + '"><b>BUKA DI GOOGLE MAPS</b></a>';
+}
+
+// points: [{lat,lng,recorded_at,accuracy,battery}]. opts.live=true → titik akhir = POSISI SEKARANG (hijau); false → TITIK AKHIR (merah).
+function web2ShowRoute(state, points, opts) {
+  web2ClearRoute(state);
+  if (!points || !points.length) { return null; }
+  opts = opts || {};
+  var live = opts.live !== false;
+  var latlngs = points.map(function (p) { return [p.lat, p.lng]; });
+  var grp = L.layerGroup();
+  if (latlngs.length > 1) {
+    L.polyline(latlngs, { color: '#3f5233', weight: 4, opacity: 0.9 }).addTo(grp);
+  }
+  for (var i = 1; i < points.length - 1; i++) {
+    L.circleMarker(latlngs[i], { radius: 4, color: '#3f5233', weight: 1, fillColor: '#6d8a54', fillOpacity: 1 })
+      .addTo(grp).bindPopup(web2RoutePointPopup(points[i]));
+  }
+  L.circleMarker(latlngs[0], { radius: 8, color: '#fff', weight: 2, fillColor: '#2d5f8a', fillOpacity: 1 })
+    .addTo(grp).bindPopup(web2RoutePointPopup(points[0], 'TITIK AWAL'));
+  if (latlngs.length > 1) {
+    var last = points[points.length - 1];
+    L.circleMarker(latlngs[latlngs.length - 1], { radius: 9, color: '#fff', weight: 2, fillColor: live ? '#2e7d32' : '#c62828', fillOpacity: 1 })
+      .addTo(grp).bindPopup(web2RoutePointPopup(last, live ? 'POSISI SEKARANG' : 'TITIK AKHIR'));
+  }
+  grp.addTo(state.map);
+  state.routeLayer = grp;
+  if (opts.fit !== false) { state.map.fitBounds(latlngs, { padding: [45, 45], maxZoom: 17 }); }
+  return grp;
+}
+
+function web2ClearRoute(state) {
+  if (state && state.routeLayer) { state.map.removeLayer(state.routeLayer); state.routeLayer = null; }
+}
+
+function web2FocusLatLng(state, lat, lng, zoom) {
+  state.map.setView([lat, lng], zoom || 17, { animate: true });
 }
