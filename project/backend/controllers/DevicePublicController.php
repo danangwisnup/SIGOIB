@@ -30,7 +30,22 @@ class DevicePublicController
         $existing = Device::findByUuid($uuid);
         if ($existing) {
             if ($existing['status'] === 'ACTIVE') {
-                Response::error('Perangkat ini sudah terdaftar dan aktif.', 409);
+                if ((int)$existing['personnel_id'] !== (int)$personnel['id']) {
+                    Response::error('Perangkat ini terdaftar untuk NRP lain. Hubungi admin.', 409);
+                }
+                // REINSTALL pada perangkat fisik yang sama (device_uuid stabil dari hardware ID):
+                // token lama hilang bersama data aplikasi -> terbitkan token baru.
+                // Perangkat BERBEDA tetap harus lewat approval (uuid berbeda -> PENDING).
+                $token = bin2hex(random_bytes(24));
+                $stmt = Database::pdo()->prepare(
+                    'UPDATE devices SET device_token = ?, last_seen_at = NOW() WHERE id = ?'
+                );
+                $stmt->execute([$token, $existing['id']]);
+                Response::success([
+                    'device_status' => 'ACTIVE',
+                    'device_token' => $token,
+                    'message' => 'Perangkat dikenali. Aktivasi ulang berhasil.',
+                ]);
             }
             if ($existing['status'] === 'PENDING') {
                 Response::success([

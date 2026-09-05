@@ -59,6 +59,16 @@ NOT TESTABLE HERE:
 - `tracking_controller.dart`: hapus field `_connSub` yang tidak pernah dipakai (subscription tetap aktif, logic tracking tidak berubah).
 - Hasil nyata di pod (Flutter 3.47.2 stable): `flutter pub get` OK (106 deps), `flutter analyze` → **No issues found!**, `flutter test` → model test PASS.
 
+### Phase 9 (2026-09): WEB2 admin (PHP SSR) + React Native mobile + fix reinstall — SELESAI
+- **`/web2`** BARU: admin panel PHP server-side rendering murni (bukan SPA, vanilla JS minimal untuk Leaflet/sidebar/modal/countdown). Struktur sesuai brief: 15 halaman + includes/ (config, api cURL client, auth session+CSRF, functions, header/sidebar/topbar/footer, picker) + assets css/js. Semua data via API existing; token API disimpan server-side di PHP session. Auto-refresh 10 dtk (meta refresh, filter GET terjaga) hanya di dashboard/monitoring/alerts. Konfirmasi aksi berisiko via modal sendiri (bukan alert()). Design system: deep forest green/army/charcoal/off-white + aksen gold.
+- **Fix reinstall (bagian 18)**: `DevicePublicController::register` — device_uuid yang sudah ACTIVE untuk NRP yang SAMA kini menerbitkan token baru (perangkat fisik sama terdeteksi via hardware-stable ID); NRP berbeda → 409; perangkat baru NRP sama → tetap PENDING (approval). Terverifikasi curl: reinstall→token baru, NRP lain→409, device baru→PENDING. Smoke 66/66 tetap PASS (tanpa regresi).
+- **`/mobile-rn`** BARU: aplikasi mobile React Native + TypeScript (Flutter tetap utuh di /mobile sebagai legacy). Stack: react-native-keychain (token), react-native-sqlite-storage (offline queue + client_point_id), react-native-background-actions (foreground service), geolocation-service, netinfo, permissions, device-info (hardware-stable uuid). `npx tsc --noEmit` PASS (0 error).
+- Infrastruktur test pod: PHP_CLI_SERVER_WORKERS=8 (menghindari deadlock sub-request web2→API pada php -S single-worker), php-curl terpasang.
+- API LIMITATION dicatat di personnel.php: filter Pangkat & status perangkat bukan parameter API existing.
+- WEB2 acceptance (curl): 12/12 halaman 200 setelah login, redirect bekerja, konten dashboard termuat.
+- Testing agent iteration_2 (web2): ~92% (17/18 flow). Badge double-escape terverifikasi hilang, meta-refresh policy benar, DANKI scope 6 personel, CSV proxy aman, drawer mobile OK.
+- Fix lanjutan dari iteration_2: `includes/auth.php` kini require `functions.php` (sebelumnya POST handler 500 karena set_flash/fmt_* belum ter-load → flash duplicate-NRP/IB tidak tampil; terverifikasi ulang via curl: flash OK, IB save OK); `.modal` diberi z-index eksplisit di atas backdrop. Catatan: dashboard memang 10 kartu (2 baris) — klaim "5 kartu" adalah salah ukur agent; semua tabel lebar sudah dibungkus `.table-scroll`. Backend double-cancel 409 sudah diperbaiki sejak Phase 7 (terverifikasi curl).
+
 ## Backlog
 - P0: Deploy ke cPanel produksi ikut DEPLOYMENT.md (ganti kredensial, HTTPS, ganti password default).
 - P0: Build & uji APK pada 5–10 perangkat (pilot) — termasuk app minimized, screen locked, phone restart.

@@ -1,0 +1,65 @@
+{
+  "summary": "Retest of SIGoIB web2 admin after badge-fix (e(badge()) -> badge()) and meta-refresh policy. Verified: (a) badge alert renders correctly on dashboard + alerts pages (no raw <span> HTML in body text); (b) meta http-equiv=refresh present on dashboard/monitoring/alerts and absent on ib/quick-check/personnel/settings; (c) live-bar countdown ticks (10 -> 8 seconds observed); (d) admin login/logout + wrong-password shows Indonesian error (no stack trace); (e) IB create flow saves session (audit log: create_monitoring #4 'TEST_UI2_IB_Retest' 10 personel); (f) reports CSV export works via server-side proxy (Content-Type text/csv, Content-Disposition attachment; filename=laporan_1.csv, token not leaked in URL); (g) DANKI role gate correct: dashboard TOTAL PERSONEL=6 (Kompi A scope), ib.php + quick-check.php show 'Anda tidak memiliki hak akses', settings hides Manajemen Akun, personnel table shows 6 rows; (h) mobile 390px drawer sidebar opens on toggle; (i) geofences leaflet + circle render; devices PENDING banner + approve buttons present; audit table 15+ rows; personnel search '320' returns 10 rows.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/monitoring/{id}/cancel",
+        "issue": "Double-cancel bug from iteration_1 not verifiable via UI this run because all 4 seed/new sessions auto-completed (Asia/Jakarta TZ interpreting UTC 'now+1h' as past). Bug likely still present in MonitoringController::cancel (no status/rowCount check). No UI regression, but backend fix still pending."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "personnel.php Tambah Personel modal — duplicate NRP submission",
+        "issue": "Submitting NRP 320001 (existing) via SIMPAN button inside #addModal did not produce a visible error flash (.alert / [role=alert] returned empty). Modal appears to close/redirect without surfacing the API duplicate error to the user. Need to verify the flash message wiring in the modal submit handler / redirect path.",
+        "selector": "#addModal form button[type=submit]",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "personnel.php Tambah Personel modal — backdrop z-index",
+        "issue": "Modal backdrop (<div id=addModal class='modal-backdrop show'>) intercepts pointer events on the SIMPAN button in some viewport configs — required force=True click during automation. Real users on small screens may hit the same issue. Consider raising modal content z-index above backdrop or adding pointer-events:none to backdrop.",
+        "selector": "#addModal .modal-backdrop",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Dashboard stat cards",
+        "issues": ["Only 5 stat cards rendered (TOTAL PERSONEL, SEDANG TRACKING, ONLINE, TERLAMBAT/OFFLINE, ALERT AKTIF). Request spec mentions 'Perangkat Pending 2' as a card but it is NOT shown. Verify whether spec called for 10 cards or if request wording implied 'Total Personel: 10' as a value only. If more cards were intended (e.g., Perangkat Pending, Session Aktif, Alert Terbaru counts), they are missing."]
+      },
+      {
+        "screen": "Personnel / any wide table on mobile 390px",
+        "issues": ["Tables (table.scrollWidth ~661px) exceed viewport width (390px) but there is no .overflow-x-auto / .table-responsive wrapper — this causes horizontal body scroll rather than a contained scrollable table. Wrap tables in <div class='overflow-x-auto'> for better mobile UX."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_1.json",
+    "/app/backend/tests/test_phase7_targeted.py"
+  ],
+  "action_items": [
+    "Investigate why duplicate-NRP add-personnel via modal does not surface an error flash to user (backend likely returns 4xx but UI swallows).",
+    "Wrap wide tables (personnel, monitoring detail, devices, audit) in an overflow-x-auto container for mobile viewports.",
+    "Confirm intended dashboard stat-card set — add Perangkat Pending / Sesi Aktif cards if that was the design intent (spec listed them).",
+    "Backend fix for double-cancel (from iteration_1) still pending — MonitoringController::cancel should 409 on already-CANCELLED sessions."
+  ],
+  "critical_code_review_comments": [
+    "Confirmed badge helper double-escape fix is applied correctly across dashboard.php and alerts.php — badge() output is rendered as HTML, and no raw <span class= text is visible on any of the 9 sidebar pages.",
+    "Reports CSV endpoint correctly downloads server-side via web2 (session cookie), so the backend API token stays server-side and is never exposed to the browser — good.",
+    "MariaDB Asia/Jakarta timezone vs UTC OS clock keeps auto-completing newly-created sessions before UI cancel testing is possible. Consider either normalizing timezones or aligning datetime-local input parsing on the server."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A this run (frontend-only)",
+    "frontend": "~92% (17/18 flows pass; personnel duplicate-NRP flash the only concrete failure; dashboard card-count is a spec ambiguity, not a defect)"
+  },
+  "test_credentials": "admin/admin123 (unchanged), danki.a/danki123 (verified scope Kompi A).",
+  "seed_data_creation": "Created 1 new monitoring_session #4 'TEST_UI2_IB_Retest' via web2 UI (auto-completed by backend TZ). No new users created. Attempted TEST_dup personnel add (duplicate NRP 320001) — did not persist.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Badge-fix regression fully verified. Meta-refresh policy is correctly implemented per spec. Reports CSV works. DANKI scope enforced. Two open UI issues remain for main agent: (1) duplicate-personnel modal error flash missing; (2) mobile table overflow lacks scroll wrapper. Backend double-cancel from iteration_1 still unaddressed (frontend testing scope this run). Do NOT reset DB — 3 OPEN alerts, PENDING/ACTIVE/REVOKED device rows, and 4 monitoring sessions are still needed for future tests.",
+  "rca of the issue": "Badge raw-HTML bug (dashboard/alerts): previous implementation used e(badge($alert['type'])) which HTML-escaped the HTML tags emitted by badge(), producing literal '<span class=...>' visible to the user. Fix: emit badge() output directly (already applied and verified). Personnel dup-NRP missing flash: presumably the modal form posts to personnel.php which forwards to /api/personnel POST via includes/api.php; on 409 the controller likely stores an error but redirects without persisting the flash to the session, or the modal-close JS reloads before the flash renders. Main agent should trace the POST handler in personnel.php."
+}
